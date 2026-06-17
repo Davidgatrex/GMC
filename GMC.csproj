@@ -8,6 +8,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <PackageIcon>GMC.png</PackageIcon>
     <ApplicationIcon>GMC.ico</ApplicationIcon>
+    <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
   </PropertyGroup>
 
   <ItemGroup>
@@ -19,6 +20,10 @@
       <Pack>True</Pack>
       <PackagePath>\</PackagePath>
     </None>
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Konscious.Security.Cryptography.Argon2" Version="1.3.1" />
   </ItemGroup>
 
   <ItemGroup>

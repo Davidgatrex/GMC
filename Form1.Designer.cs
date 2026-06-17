@@ -39,20 +39,12 @@
             OutputBTN = new Button();
             label4 = new Label();
             OutputTB = new TextBox();
-            label5 = new Label();
-            KeyTB = new TextBox();
             DecypherCHK = new CheckBox();
-            RoundCountNUD = new NumericUpDown();
-            label6 = new Label();
             RunButton = new Button();
             button1 = new Button();
             SettingsButton = new Button();
-            button2 = new Button();
-            label7 = new Label();
-            MKTB = new TextBox();
-            SaveKeyBTN = new Button();
-            button3 = new Button();
-            ((System.ComponentModel.ISupportInitialize)RoundCountNUD).BeginInit();
+            DelStorKey = new Button();
+            ExchangeBTN = new Button();
             SuspendLayout();
             // 
             // label1
@@ -141,27 +133,10 @@
             OutputTB.TabIndex = 5;
             OutputTB.TextChanged += OutputTB_TextChanged;
             // 
-            // label5
-            // 
-            label5.AutoSize = true;
-            label5.Location = new Point(16, 195);
-            label5.Name = "label5";
-            label5.Size = new Size(26, 15);
-            label5.TabIndex = 9;
-            label5.Text = "Key";
-            // 
-            // KeyTB
-            // 
-            KeyTB.Location = new Point(12, 214);
-            KeyTB.Name = "KeyTB";
-            KeyTB.Size = new Size(171, 23);
-            KeyTB.TabIndex = 8;
-            KeyTB.TextChanged += KeyTB_TextChanged;
-            // 
             // DecypherCHK
             // 
             DecypherCHK.AutoSize = true;
-            DecypherCHK.Location = new Point(16, 332);
+            DecypherCHK.Location = new Point(16, 218);
             DecypherCHK.Name = "DecypherCHK";
             DecypherCHK.Size = new Size(76, 19);
             DecypherCHK.TabIndex = 11;
@@ -169,27 +144,9 @@
             DecypherCHK.UseVisualStyleBackColor = true;
             DecypherCHK.CheckedChanged += DecypherCHK_CheckedChanged;
             // 
-            // RoundCountNUD
-            // 
-            RoundCountNUD.Location = new Point(12, 303);
-            RoundCountNUD.Name = "RoundCountNUD";
-            RoundCountNUD.Size = new Size(120, 23);
-            RoundCountNUD.TabIndex = 12;
-            RoundCountNUD.Value = new decimal(new int[] { 15, 0, 0, 0 });
-            RoundCountNUD.ValueChanged += RoundCountNUD_ValueChanged;
-            // 
-            // label6
-            // 
-            label6.AutoSize = true;
-            label6.Location = new Point(16, 285);
-            label6.Name = "label6";
-            label6.Size = new Size(47, 15);
-            label6.TabIndex = 13;
-            label6.Text = "Rounds";
-            // 
             // RunButton
             // 
-            RunButton.Location = new Point(12, 357);
+            RunButton.Location = new Point(12, 243);
             RunButton.Name = "RunButton";
             RunButton.Size = new Size(75, 23);
             RunButton.TabIndex = 14;
@@ -204,7 +161,7 @@
             button1.FlatAppearance.MouseDownBackColor = Color.Maroon;
             button1.FlatAppearance.MouseOverBackColor = Color.FromArgb(192, 0, 0);
             button1.FlatStyle = FlatStyle.Flat;
-            button1.Location = new Point(164, 332);
+            button1.Location = new Point(164, 218);
             button1.Name = "button1";
             button1.Size = new Size(75, 48);
             button1.TabIndex = 15;
@@ -222,56 +179,30 @@
             SettingsButton.UseVisualStyleBackColor = true;
             SettingsButton.Click += SettingsButton_Click;
             // 
-            // button2
+            // DelStorKey
             // 
-            button2.Location = new Point(189, 203);
-            button2.Name = "button2";
-            button2.Size = new Size(53, 23);
-            button2.TabIndex = 17;
-            button2.Text = "Find";
-            button2.UseVisualStyleBackColor = true;
-            button2.Click += button2_Click;
+            DelStorKey.BackColor = Color.LightCoral;
+            DelStorKey.FlatAppearance.BorderColor = Color.Yellow;
+            DelStorKey.FlatAppearance.MouseDownBackColor = Color.Maroon;
+            DelStorKey.FlatAppearance.MouseOverBackColor = Color.FromArgb(192, 0, 0);
+            DelStorKey.FlatStyle = FlatStyle.Flat;
+            DelStorKey.Location = new Point(12, 189);
+            DelStorKey.Name = "DelStorKey";
+            DelStorKey.Size = new Size(171, 23);
+            DelStorKey.TabIndex = 17;
+            DelStorKey.Text = "Delete stored key";
+            DelStorKey.UseVisualStyleBackColor = false;
+            DelStorKey.Click += DelStorKey_Click;
             // 
-            // label7
+            // ExchangeBTN
             // 
-            label7.AutoSize = true;
-            label7.Location = new Point(16, 240);
-            label7.Name = "label7";
-            label7.Size = new Size(64, 15);
-            label7.TabIndex = 19;
-            label7.Text = "Master key";
-            // 
-            // MKTB
-            // 
-            MKTB.Location = new Point(12, 259);
-            MKTB.Name = "MKTB";
-            MKTB.Size = new Size(171, 23);
-            MKTB.TabIndex = 18;
-            // 
-            // SaveKeyBTN
-            // 
-            SaveKeyBTN.Location = new Point(189, 232);
-            SaveKeyBTN.Name = "SaveKeyBTN";
-            SaveKeyBTN.Size = new Size(53, 23);
-            SaveKeyBTN.TabIndex = 20;
-            SaveKeyBTN.Text = "Save";
-            SaveKeyBTN.UseVisualStyleBackColor = true;
-            SaveKeyBTN.Click += SaveKeyBTN_Click;
-            // 
-            // button3
-            // 
-            button3.BackColor = Color.FromArgb(255, 128, 128);
-            button3.FlatAppearance.BorderColor = Color.Yellow;
-            button3.FlatAppearance.MouseDownBackColor = Color.FromArgb(64, 0, 0);
-            button3.FlatAppearance.MouseOverBackColor = Color.FromArgb(192, 0, 0);
-            button3.FlatStyle = FlatStyle.Flat;
-            button3.Location = new Point(189, 261);
-            button3.Name = "button3";
-            button3.Size = new Size(53, 23);
-            button3.TabIndex = 21;
-            button3.Text = "Delete";
-            button3.UseVisualStyleBackColor = false;
-            button3.Click += button3_Click;
+            ExchangeBTN.Location = new Point(67, 131);
+            ExchangeBTN.Name = "ExchangeBTN";
+            ExchangeBTN.Size = new Size(75, 23);
+            ExchangeBTN.TabIndex = 18;
+            ExchangeBTN.Text = "Exchange";
+            ExchangeBTN.UseVisualStyleBackColor = true;
+            ExchangeBTN.Click += ExchangeBTN_Click;
             // 
             // UMC_UI_1
             // 
@@ -279,20 +210,13 @@
             AutoScaleMode = AutoScaleMode.Font;
             BackColor = Color.FromArgb(255, 224, 192);
             BackgroundImageLayout = ImageLayout.Zoom;
-            ClientSize = new Size(251, 392);
-            Controls.Add(button3);
-            Controls.Add(SaveKeyBTN);
-            Controls.Add(label7);
-            Controls.Add(MKTB);
-            Controls.Add(button2);
+            ClientSize = new Size(251, 274);
+            Controls.Add(ExchangeBTN);
+            Controls.Add(DelStorKey);
             Controls.Add(SettingsButton);
             Controls.Add(button1);
             Controls.Add(RunButton);
-            Controls.Add(label6);
-            Controls.Add(RoundCountNUD);
             Controls.Add(DecypherCHK);
-            Controls.Add(label5);
-            Controls.Add(KeyTB);
             Controls.Add(OutputBTN);
             Controls.Add(label4);
             Controls.Add(OutputTB);
@@ -304,7 +228,6 @@
             Icon = (Icon)resources.GetObject("$this.Icon");
             Name = "UMC_UI_1";
             Text = "GMC UI";
-            ((System.ComponentModel.ISupportInitialize)RoundCountNUD).EndInit();
             ResumeLayout(false);
             PerformLayout();
         }
@@ -321,18 +244,11 @@
         private Button OutputBTN;
         private Label label4;
         private TextBox OutputTB;
-        private Label label5;
-        private TextBox KeyTB;
         private CheckBox DecypherCHK;
-        private NumericUpDown RoundCountNUD;
-        private Label label6;
         private Button RunButton;
         private Button button1;
         private Button SettingsButton;
-        private Button button2;
-        private Label label7;
-        private TextBox MKTB;
-        private Button SaveKeyBTN;
-        private Button button3;
+        private Button DelStorKey;
+        private Button ExchangeBTN;
     }
 }

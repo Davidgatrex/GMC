@@ -34,9 +34,6 @@
             openFileDialog1 = new OpenFileDialog();
             label1 = new Label();
             OldKTB = new TextBox();
-            NewKTB = new TextBox();
-            label2 = new Label();
-            ChgKey = new Button();
             button2 = new Button();
             button3 = new Button();
             saveFileDialog1 = new SaveFileDialog();
@@ -72,9 +69,9 @@
             label1.AutoSize = true;
             label1.Location = new Point(180, 38);
             label1.Name = "label1";
-            label1.Size = new Size(68, 15);
+            label1.Size = new Size(120, 15);
             label1.TabIndex = 2;
-            label1.Text = "Current key";
+            label1.Text = "Migration Passphrase";
             // 
             // OldKTB
             // 
@@ -83,35 +80,9 @@
             OldKTB.Size = new Size(234, 23);
             OldKTB.TabIndex = 3;
             // 
-            // NewKTB
-            // 
-            NewKTB.Location = new Point(180, 106);
-            NewKTB.Name = "NewKTB";
-            NewKTB.Size = new Size(234, 23);
-            NewKTB.TabIndex = 5;
-            // 
-            // label2
-            // 
-            label2.AutoSize = true;
-            label2.Location = new Point(180, 88);
-            label2.Name = "label2";
-            label2.Size = new Size(52, 15);
-            label2.TabIndex = 4;
-            label2.Text = "New key";
-            // 
-            // ChgKey
-            // 
-            ChgKey.Location = new Point(180, 135);
-            ChgKey.Name = "ChgKey";
-            ChgKey.Size = new Size(75, 23);
-            ChgKey.TabIndex = 6;
-            ChgKey.Text = "Update key";
-            ChgKey.UseVisualStyleBackColor = true;
-            ChgKey.Click += ChgKey_Click;
-            // 
             // button2
             // 
-            button2.Location = new Point(322, 135);
+            button2.Location = new Point(322, 85);
             button2.Name = "button2";
             button2.Size = new Size(92, 23);
             button2.TabIndex = 7;
@@ -136,9 +107,6 @@
             ClientSize = new Size(426, 170);
             Controls.Add(button3);
             Controls.Add(button2);
-            Controls.Add(ChgKey);
-            Controls.Add(NewKTB);
-            Controls.Add(label2);
             Controls.Add(OldKTB);
             Controls.Add(label1);
             Controls.Add(button1);
@@ -159,9 +127,6 @@
         private OpenFileDialog openFileDialog1;
         private Label label1;
         private TextBox OldKTB;
-        private TextBox NewKTB;
-        private Label label2;
-        private Button ChgKey;
         private Button button2;
         private Button button3;
         private SaveFileDialog saveFileDialog1;

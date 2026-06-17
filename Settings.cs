@@ -8,6 +8,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Forms;
+using Konscious.Security.Cryptography;
 using static System.Runtime.InteropServices.JavaScript.JSType;
 
 namespace GMC
@@ -29,8 +30,38 @@ namespace GMC
 
         }
 
+
+        public static byte[] GenerateSalt()
+        {
+            // 16 bytes es el estándar recomendado (128 bits)
+            byte[] salt = new byte[16];
+
+            // Llena el array con bytes aleatorios criptográficamente seguros
+            RandomNumberGenerator.Fill(salt);
+
+            return salt;
+        }
+
+        private byte[] KDF(string s, byte[] salt)
+        {
+            using (var argon2 = new Argon2id(Encoding.UTF8.GetBytes(s)))
+            {
+                argon2.Salt = salt;
+                argon2.DegreeOfParallelism = 8; // Número de hilos
+                argon2.MemorySize = 65536;     // 64 MB de RAM
+                argon2.Iterations = 4;         // Número de pasadas
+
+                return argon2.GetBytes(256 / 8);
+            }
+        }
+
         private void button1_Click_1(object sender, EventArgs e)
         {
+            if(OldKTB.Text.Length == 0)
+            {
+                MessageBox.Show("Migration passphrase can't be empty", "GMC: Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return;
+            }
             openFileDialog1.FileName = "";
             openFileDialog1.Filter = "Bancos de claves GMC (*.gmck)|*.gmck";
             openFileDialog1.ShowDialog(this);
@@ -38,137 +69,147 @@ namespace GMC
             if (openFileDialog1.FileName.Length == 0 || !File.Exists(openFileDialog1.FileName))
                 return;
 
-            byte[] data = File.ReadAllBytes(openFileDialog1.FileName);
-            string name = Encoding.ASCII.GetString(data.TakeLast(77).ToArray());
+            var res = MessageBox.Show("Overwrite or keep matching keys? (Yes = Overwrite. No = Keep)", "Confirmation", MessageBoxButtons.YesNoCancel, MessageBoxIcon.Exclamation);
+            if (res == DialogResult.Cancel)
+                return;
 
-            string dst = Application.CommonAppDataPath + "\\" + name;
-            if (File.Exists(dst))
+            byte[]? MasterKey = UMC_UI_1.GetMasterKey();
+            if(MasterKey == null)
             {
-                var res = MessageBox.Show("This bank already exists. Overwrite?", "Confirmation", MessageBoxButtons.YesNo, MessageBoxIcon.Exclamation);
-                if (res == DialogResult.No)
-                    return;
-
-                File.Delete(dst);
-            }
-
-            File.WriteAllBytes(dst, data.Take(data.Length - 77).ToArray());
-        }
-
-        private void ChgKey_Click(object sender, EventArgs e)
-        {
-            if (OldKTB.Text.Length == 0)
-            {
-                MessageBox.Show("Current key can't be empty", "GMC: Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show("This device's Master key could not be found. Can't decypher", "GMC: Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 return;
             }
-            if (NewKTB.Text.Length == 0)
+
+            List<byte> local = new();
+            byte[] LocalRaw = UMC_UI_1.GetKeyBank();
+
+            var local_r = (LocalRaw.Length > 0) ? CypherCapsule.Decypher(LocalRaw, local, MasterKey) : CypherReturnCode.OK;
+
+            List<byte> foreign = new();
+            List<byte> fore_raw = [.. File.ReadAllBytes(openFileDialog1.FileName)];
+            if (fore_raw.Count == 0)
+                return;
+            if(fore_raw.Count < 16)
             {
-                MessageBox.Show("New key can't be empty", "GMC: Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show("Malformed input file", "GMC: Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 return;
             }
-            if (UpdateKey(OldKTB.Text, NewKTB.Text) == 0)
-            {
-                MessageBox.Show("Key updated successfully", "Info", MessageBoxButtons.OK, MessageBoxIcon.Information);
-            }
-        }
+            byte[] salt = fore_raw.Take(16).ToArray();
+            fore_raw.RemoveRange(0, 16);
+            var foreign_r = CypherCapsule.Decypher(fore_raw.ToArray(), foreign, KDF(OldKTB.Text, salt));
 
-        private int UpdateKey(string Old, string New)
-        {
-            string PathOld = Application.CommonAppDataPath + $@"\KeyBank_{System.Convert.ToHexString(SHA256.HashData(System.Text.Encoding.ASCII.GetBytes(Old)))}.gmck";
-            string PathNew = Application.CommonAppDataPath + $@"\KeyBank_{System.Convert.ToHexString(SHA256.HashData(System.Text.Encoding.ASCII.GetBytes(New)))}.gmck";
-
-            if (!File.Exists(PathOld))
+            if(!(local_r == CypherReturnCode.OK && foreign_r == CypherReturnCode.OK))
             {
-                MessageBox.Show("No bank found with current key", "GMC: Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                return 1;
+                MessageBox.Show("Cryptographic error", "GMC: Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return;
             }
 
-            if (!File.Exists(PathNew))
+            Dictionary<string, string> keyValuePairs = new();
+
+            string loc_s = Encoding.ASCII.GetString(local.ToArray());
+            string fore_s = Encoding.ASCII.GetString(foreign.ToArray());
+
+            if(loc_s.Length > 0)
+                foreach(string s in loc_s.Split('\n'))
+                {
+                    if (!s.Contains('\t'))
+                        continue;
+                    string[] sp = s.Split('\t');
+                    if (sp.Length < 2)
+                        continue;
+
+                    keyValuePairs.Add(sp[0], sp[1]);
+                }
+
+            foreach (string s in fore_s.Split('\n'))
             {
-                FileStream fs = File.Create(PathNew);
-                fs.Close();
+                if (!s.Contains('\t'))
+                    continue;
+                string[] sp = s.Split('\t');
+                if (sp.Length < 2)
+                    continue;
+
+                if(keyValuePairs.ContainsKey(sp[0]))
+                    if(res == DialogResult.Yes)
+                        keyValuePairs[sp[0]] = sp[1];
+                    else
+                        continue;
+                else
+                    keyValuePairs.Add(sp[0], sp[1]);
             }
-            else
+
+            string outString = "";
+
+            foreach(KeyValuePair<string, string> pair in keyValuePairs)
             {
-                MessageBox.Show("A bank with the new key already exists", "GMC: Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                return 1;
+                outString += $"{pair.Key}\t{pair.Value}\n";
             }
 
-            byte[] raw = File.ReadAllBytes(PathOld);
-            byte[] dec = new byte[raw.Length];
+            List<byte> outBytes = new();
 
-            CypherCapsule.Generic(System.Text.Encoding.ASCII.GetBytes(Old), raw, ref dec, true, 15);
+            var c_res = CypherCapsule.Cypher(Encoding.ASCII.GetBytes(outString), outBytes, MasterKey);
 
-            CypherCapsule.Generic(System.Text.Encoding.ASCII.GetBytes(New), dec, ref raw, false, 15);
-
-            File.WriteAllBytes(PathNew, raw);
-            File.Delete(PathOld);
-
-            return 0;
-        }
-
-        private int DelBank(string Old)
-        {
-            string PathOld = Application.CommonAppDataPath + $@"\KeyBank_{System.Convert.ToHexString(SHA256.HashData(System.Text.Encoding.ASCII.GetBytes(Old)))}.gmck";
-
-            if (!File.Exists(PathOld))
+            if(c_res != CypherReturnCode.OK)
             {
-                MessageBox.Show("No bank found with current key", "GMC: Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                return 1;
+                MessageBox.Show("Cryptographic error 2", "GMC: Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return;
             }
 
-            File.Delete(PathOld);
-            return 0;
+            UMC_UI_1.SaveKeyBank(outBytes.ToArray());
         }
 
         private void button2_Click(object sender, EventArgs e)
         {
-            if (OldKTB.Text.Length == 0)
-            {
-                MessageBox.Show("Current key can't be empty", "GMC: Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                return;
-            }
 
             var res = MessageBox.Show("Are you sure you want to delete this bank?\n (This action cannot be undone)", "Confirmation", MessageBoxButtons.YesNo, MessageBoxIcon.Exclamation);
             if (res == DialogResult.No)
                 return;
 
-            if (DelBank(OldKTB.Text) == 0)
-            {
-                MessageBox.Show("Bank deleted successfully", "Info", MessageBoxButtons.OK, MessageBoxIcon.Information);
-            }
+            UMC_UI_1.DeleteKeyBank();
+            MessageBox.Show("Bank deleted successfully", "Info", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
 
         private void button3_Click(object sender, EventArgs e)
         {
             if (OldKTB.Text.Length == 0)
             {
-                MessageBox.Show("Current key can't be empty", "GMC: Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show("Migration passphrase can't be empty", "GMC: Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 return;
             }
-
             saveFileDialog1.FileName = "";
             saveFileDialog1.Filter = "Bancos de claves GMC (*.gmck)|*.gmck";
-            saveFileDialog1.DefaultExt = ".gmck";
             saveFileDialog1.ShowDialog(this);
 
-            if (saveFileDialog1.FileName.Length == 0)
+            if (saveFileDialog1.FileName.Length == 0 || !File.Exists(saveFileDialog1.FileName))
                 return;
 
-            string name = $"KeyBank_{Convert.ToHexString(SHA256.HashData(Encoding.ASCII.GetBytes(OldKTB.Text)))}.gmck";
-
-            string PathLocal = Application.CommonAppDataPath + "\\" + name;
-
-            if (File.Exists(saveFileDialog1.FileName))
+            byte[]? MasterKey = UMC_UI_1.GetMasterKey();
+            if (MasterKey == null)
             {
-                var res = MessageBox.Show("This bank already exists. Overwrite?", "Confirmation", MessageBoxButtons.YesNo, MessageBoxIcon.Exclamation);
-                if (res == DialogResult.No)
-                    return;
-                File.Delete(saveFileDialog1.FileName);
+                MessageBox.Show("This device's Master key could not be found. Can't decypher", "GMC: Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return;
             }
 
-            File.Copy(PathLocal, saveFileDialog1.FileName);
-            File.AppendAllText(saveFileDialog1.FileName, name);
+            List<byte> local = new();
+            byte[] localRaw = UMC_UI_1.GetKeyBank();
+            if(localRaw.Length == 0)
+            {
+                MessageBox.Show("Local key bank is empty. Nothing to export", "GMC: Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return;
+            }
+            var local_r = CypherCapsule.Decypher(File.ReadAllBytes(Application.CommonAppDataPath + $@"\KeyBank.gmck"), local, MasterKey);
+
+            List<byte> outBytes = new();
+
+            var c_res = CypherCapsule.Cypher(local.ToArray(), outBytes, KDF(OldKTB.Text, GenerateSalt()));
+
+            if (c_res != CypherReturnCode.OK)
+            {
+                MessageBox.Show("Cryptographic error 2", "GMC: Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return;
+            }
+
+            File.WriteAllBytes(saveFileDialog1.FileName, outBytes.ToArray());
         }
     }
 }

@@ -1,6 +1,9 @@
+using System.Buffers.Text;
 using System.Media;
 using System.Reflection;
 using System.Security.Cryptography;
+using System.Text;
+using System.Windows.Forms;
 
 namespace GMC
 {
@@ -8,9 +11,8 @@ namespace GMC
     {
         private string InPath;
         private string OutPath = "";
-        private int roundCNT = 25;
-        private string key = "PTyc@CWCb*";
         private bool Decypher_Internal = false;
+        private const string KeyName = "GMC_MASTER_KEY";
         public UMC_UI_1(string defaultIn)
         {
             InPath = defaultIn;
@@ -23,16 +25,12 @@ namespace GMC
             openFileDialog1.FileName = InPath;
             InputTB.Text = InPath;
 
-            if(true)
+            if (!RegUtils.ValuePresent(Microsoft.Win32.RegistryHive.CurrentUser, @"Software\GenerallyMambo\GMC", "MasterKeyB64"))
             {
-                InPath = @"D:\CAM BOARD.pdf";
-                openFileDialog1.FileName = InPath;
-                InputTB.Text = InPath;
-                OutPath = @"D:\CAM BOARD.pdf.gmc";
-                saveFileDialog1.FileName = OutPath;
-                OutputTB.Text = OutPath;
-                KeyTB.Text = key;
-                RoundCountNUD.Value = roundCNT;
+                Aes aes = Aes.Create();
+                aes.GenerateKey();
+                RegUtils.WriteValue(Microsoft.Win32.RegistryHive.CurrentUser, @"Software\GenerallyMambo\GMC", "MasterKeyB64", Convert.ToBase64String(TPMCypher(aes.Key)));
+                aes.Dispose();
             }
         }
 
@@ -88,18 +86,6 @@ namespace GMC
             }
         }
 
-        private void KeyTB_TextChanged(object sender, EventArgs e)
-        {
-
-            KeyTB.Text = KeyTB.Text.Trim('\t');
-            key = KeyTB.Text;
-        }
-
-        private void RoundCountNUD_ValueChanged(object sender, EventArgs e)
-        {
-            roundCNT = (int)RoundCountNUD.Value;
-        }
-
         private void DecypherCHK_CheckedChanged(object sender, EventArgs e)
         {
             Decypher_Internal = DecypherCHK.Checked;
@@ -122,18 +108,37 @@ namespace GMC
                 MessageBox.Show("No output file selected", "GMC: Error", MessageBoxButtons.OK, MessageBoxIcon.Error, MessageBoxDefaultButton.Button1);
                 return;
             }
-            if (roundCNT == 0)
-            {
-                MessageBox.Show("Round count can't be zero", "GMC: Error", MessageBoxButtons.OK, MessageBoxIcon.Error, MessageBoxDefaultButton.Button1);
-                return;
-            }
-            if (key.Length == 0)
-            {
-                MessageBox.Show("Key must be not null", "GMC: Error", MessageBoxButtons.OK, MessageBoxIcon.Error, MessageBoxDefaultButton.Button1);
-                return;
-            }
+
             Cursor.Current = Cursors.WaitCursor;
-            CypherCapsule.Main(System.Text.Encoding.ASCII.GetBytes(key), InPath, OutPath, Decypher_Internal, roundCNT);
+            if (!Decypher_Internal)
+            {
+                byte[] Key;
+                List<byte> Out = new();
+                CypherCapsule.Cypher(File.ReadAllBytes(InPath), Out, out Key);
+                if (SaveKey(Key))
+                {
+                    MessageBox.Show("Key Saved");
+                }
+                else
+                {
+                    MessageBox.Show("Couldn't save the key");
+                }
+                File.WriteAllBytes(OutPath, Out.ToArray());
+            }
+            else
+            {
+                byte[]? Key = FindKey();
+                if (Key == null)
+                {
+                    MessageBox.Show("No stored key found for this file. Cannot decypher", "GMC: Error", MessageBoxButtons.OK, MessageBoxIcon.Error, MessageBoxDefaultButton.Button1);
+                    Cursor.Current = Cursors.Default;
+                    return;
+                }
+
+                List<byte> Out = new();
+                CypherCapsule.Decypher(File.ReadAllBytes(InPath), Out, Key);
+                File.WriteAllBytes(OutPath, Out.ToArray());
+            }
             Cursor.Current = Cursors.Default;
         }
 
@@ -179,87 +184,178 @@ namespace GMC
             new Settings().ShowDialog();
         }
 
-        private string FindKey()
+        public static byte[]? GetMasterKey()
         {
-            if (MKTB.Text.Length == 0)
+            if (!RegUtils.ValuePresent(Microsoft.Win32.RegistryHive.CurrentUser, @"Software\GenerallyMambo\GMC", "MasterKeyB64"))
+                return null;
+
+            string MasterB64 = RegUtils.ReadValueString(Microsoft.Win32.RegistryHive.CurrentUser, @"Software\GenerallyMambo\GMC", "MasterKeyB64") ?? "";
+
+            if (MasterB64.Length == 0)
+                return null;
+
+            byte[] MasterKey_Cyph = Convert.FromBase64String(MasterB64);
+            return TPMDecypher(MasterKey_Cyph);
+        }
+
+        private static CngKey ObtainOrHandleTPMKey()
+        {
+            // Force provider to be Windows' TPM
+            CngProvider tpmProvider = CngProvider.MicrosoftPlatformCryptoProvider;
+
+            if (CngKey.Exists(KeyName, tpmProvider))
             {
-                MessageBox.Show("Master key must be not null", "GMC: Error", MessageBoxButtons.OK, MessageBoxIcon.Error, MessageBoxDefaultButton.Button1);
-                return "";
+                return CngKey.Open(KeyName, tpmProvider);
             }
+            else
+            {
+                // Create key if it doesn't exist
+                CngKeyCreationParameters creationParameters = new CngKeyCreationParameters
+                {
+                    Provider = tpmProvider,
+                    // None ensures we don't accidentally wipe an existing key if called concurrently
+                    KeyCreationOptions = CngKeyCreationOptions.None
+                };
+
+                return CngKey.Create(CngAlgorithm.Rsa, KeyName, creationParameters);
+            }
+        }
+
+        private static byte[] TPMCypher(byte[] data)
+        {
+            using (CngKey key = ObtainOrHandleTPMKey())
+            using (RSACng rsa = new RSACng(key))
+            {
+                // Cypher using OAEP
+                return rsa.Encrypt(data, RSAEncryptionPadding.OaepSHA256);
+            }
+        }
+
+        private static byte[] TPMDecypher(byte[] data)
+        {
+            using (CngKey key = ObtainOrHandleTPMKey())
+            using (RSACng rsa = new RSACng(key))
+            {
+                return rsa.Decrypt(data, RSAEncryptionPadding.OaepSHA256);
+            }
+        }
+
+        public static byte[] GetKeyBank()
+        {
+            string appData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+
+            string dir = Path.Combine(appData, "GenerallyMambo", "GMC");
+            Directory.CreateDirectory(dir);
+
+            string pathFile = Path.Combine(dir, "KeyBank.gmck");
+            if (!File.Exists(pathFile))
+                return [];
+            return File.ReadAllBytes(pathFile);
+        }
+        public static void SaveKeyBank(byte[] data)
+        {
+            string appData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+
+            string dir = Path.Combine(appData, "GenerallyMambo", "GMC");
+            Directory.CreateDirectory(dir);
+
+            string pathFile = Path.Combine(dir, "KeyBank.gmck");
+            File.WriteAllBytes(pathFile, data);
+        }
+
+        public static void DeleteKeyBank()
+        {
+            string appData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+
+            string dir = Path.Combine(appData, "GenerallyMambo", "GMC");
+            Directory.CreateDirectory(dir);
+
+            string pathFile = Path.Combine(dir, "KeyBank.gmck");
+            if (File.Exists(pathFile))
+                File.Delete(pathFile);
+        }
+
+        private byte[]? FindKey()
+        {
             if (InPath.Length == 0)
             {
                 MessageBox.Show("No input file selected", "GMC: Error", MessageBoxButtons.OK, MessageBoxIcon.Error, MessageBoxDefaultButton.Button1);
-                return "";
-            }
-            string path = Application.CommonAppDataPath + $@"\KeyBank_{System.Convert.ToHexString(SHA256.HashData(System.Text.Encoding.ASCII.GetBytes(MKTB.Text)))}.gmck";
-            if (!File.Exists(path))
-            {
-                MessageBox.Show("Unexistant key bank file", "GMC: Error", MessageBoxButtons.OK, MessageBoxIcon.Error, MessageBoxDefaultButton.Button1);
-                return "";
+                return null;
             }
 
-            byte[] raw = File.ReadAllBytes(path);
-            byte[] dec = new byte[raw.Length];
+            byte[] raw = GetKeyBank();
+
+            if (raw.Length == 0)
+                return null;
+            List<byte> dec = new();
 
             string TargetName = InPath.Split('\\').Last();
 
-            CypherCapsule.Generic(System.Text.Encoding.ASCII.GetBytes(MKTB.Text), raw, ref dec, true, 15);
-            string[] dec_s = System.Text.Encoding.ASCII.GetString(dec).Split('\n');
+            byte[]? MKey = GetMasterKey();
+            if (MKey == null)
+            {
+                MessageBox.Show("Error obtaining Master Key", "GMC: Error", MessageBoxButtons.OK, MessageBoxIcon.Error, MessageBoxDefaultButton.Button1);
+                return null;
+            }
+            var dec_r = CypherCapsule.Decypher(raw, dec, MKey);
+
+            if (dec_r != CypherReturnCode.OK)
+            {
+                MessageBox.Show("Error decyphering key bank", "GMC: Error", MessageBoxButtons.OK, MessageBoxIcon.Error, MessageBoxDefaultButton.Button1);
+                return null;
+            }
+            string[] dec_s = System.Text.Encoding.ASCII.GetString(dec.ToArray()).Split('\n');
             foreach (string s in dec_s)
             {
                 string[] sp = s.Split('\t');
-                if (sp.Length < 3)
+                if (sp.Length < 2)
                     continue;
 
                 if (sp[0].Equals(TargetName))
                 {
-                    int.TryParse(sp[2], out roundCNT);
-                    RoundCountNUD.Value = roundCNT;
-                    return sp[1];
+                    return Convert.FromBase64String(sp[1]);
                 }
             }
 
-            return "";
+            return null;
         }
 
-        private void SaveKey()
+        private bool SaveKey(byte[] key)
         {
-            if (MKTB.Text.Length == 0)
-            {
-                MessageBox.Show("Master key must be not null", "GMC: Error", MessageBoxButtons.OK, MessageBoxIcon.Error, MessageBoxDefaultButton.Button1);
-                return;
-            }
             if (OutPath.Length == 0)
             {
                 MessageBox.Show("No output file selected", "GMC: Error", MessageBoxButtons.OK, MessageBoxIcon.Error, MessageBoxDefaultButton.Button1);
-                return;
+                return false;
             }
             if (key.Length == 0)
             {
                 MessageBox.Show("Key empty", "GMC: Error", MessageBoxButtons.OK, MessageBoxIcon.Error, MessageBoxDefaultButton.Button1);
-                return;
-            }
-            if (roundCNT == 0)
-            {
-                MessageBox.Show("Rounds empty", "GMC: Error", MessageBoxButtons.OK, MessageBoxIcon.Error, MessageBoxDefaultButton.Button1);
-                return;
-            }
-            string path = Application.CommonAppDataPath + $@"\KeyBank_{System.Convert.ToHexString(SHA256.HashData(System.Text.Encoding.ASCII.GetBytes(MKTB.Text)))}.gmck";
-            if (!File.Exists(path))
-            {
-                FileStream fs = File.Create(path);
-                fs.Close();
+                return false;
             }
 
             string[] dec_s;
 
+            byte[]? MKey = GetMasterKey();
+            if (MKey == null)
             {
-                byte[] raw = File.ReadAllBytes(path);
-                byte[] dec = new byte[raw.Length];
+                MessageBox.Show("Error obtaining Master Key", "GMC: Error", MessageBoxButtons.OK, MessageBoxIcon.Error, MessageBoxDefaultButton.Button1);
+                return false;
+            }
+            {
+                byte[] raw = GetKeyBank();
 
-                CypherCapsule.Generic(System.Text.Encoding.ASCII.GetBytes(MKTB.Text), raw, ref dec, true, 15);
+                if (raw.Length == 0)
+                {
+                    dec_s = new string[0];
+                }
+                else
+                {
+                    List<byte> dec = new();
 
-                dec_s = System.Text.Encoding.ASCII.GetString(dec).Split('\n');
+                    CypherCapsule.Decypher(raw, dec, MKey);
+
+                    dec_s = System.Text.Encoding.ASCII.GetString(dec.ToArray()).Split('\n');
+                }
             }
 
             string TargetName = OutPath.Split('\\').Last();
@@ -268,65 +364,55 @@ namespace GMC
             foreach (string s in dec_s)
             {
                 string[] sp = s.Split('\t');
-                if (sp.Length < 3)
+                if (sp.Length < 2)
                     continue;
 
                 if (sp[0].Equals(TargetName))
                 {
                     var res = MessageBox.Show("This bank already has a key for a file with this name. Overwrite?", "Confirmation", MessageBoxButtons.YesNo, MessageBoxIcon.Exclamation);
                     if (res == DialogResult.No)
-                        return;
+                        return false;
                 }
                 else
-                    Out += $"{sp[0]}\t{sp[1]}\t{sp[2]}\n";
+                    Out += $"{sp[0]}\t{sp[1]}";
             }
 
-            Out += $"{TargetName}\t{key}\t{roundCNT}";
+            Out += $"{TargetName}\t{Convert.ToBase64String(key)}";
 
-            byte[] enc = new byte[Out.Length];
-            CypherCapsule.Generic(System.Text.Encoding.ASCII.GetBytes(MKTB.Text), System.Text.Encoding.ASCII.GetBytes(Out), ref enc, false, 15);
+            List<byte> enc = new();
+            MessageBox.Show($"{TargetName}. {OutPath}");
+            var re = CypherCapsule.Cypher(System.Text.Encoding.ASCII.GetBytes(Out), enc, MKey);
 
-            File.WriteAllBytes(path, enc);
+            SaveKeyBank(enc.ToArray());
+            return true;
         }
 
-        private void DeleteKey()
+        private bool DeleteKey()
         {
-            if (MKTB.Text.Length == 0)
-            {
-                MessageBox.Show("Master key must be not null", "GMC: Error", MessageBoxButtons.OK, MessageBoxIcon.Error, MessageBoxDefaultButton.Button1);
-                return;
-            }
             if (OutPath.Length == 0)
             {
                 MessageBox.Show("No output file selected", "GMC: Error", MessageBoxButtons.OK, MessageBoxIcon.Error, MessageBoxDefaultButton.Button1);
-                return;
-            }
-            if(key.Contains('\t'))
-            {
-                MessageBox.Show("Can't save a key with tabs", "GMC: Error", MessageBoxButtons.OK, MessageBoxIcon.Error, MessageBoxDefaultButton.Button1);
-                return;
-            }
-            if (roundCNT == 0)
-            {
-                MessageBox.Show("Rounds empty", "GMC: Error", MessageBoxButtons.OK, MessageBoxIcon.Error, MessageBoxDefaultButton.Button1);
-                return;
-            }
-            string path = Application.CommonAppDataPath + $@"\KeyBank_{System.Convert.ToHexString(SHA256.HashData(System.Text.Encoding.ASCII.GetBytes(MKTB.Text)))}.gmck";
-            if (!File.Exists(path))
-            {
-                FileStream fs = File.Create(path);
-                fs.Close();
+                return false;
             }
 
             string[] dec_s;
 
+            byte[]? MKey = GetMasterKey();
+            if (MKey == null)
             {
-                byte[] raw = File.ReadAllBytes(path);
-                byte[] dec = new byte[raw.Length];
+                MessageBox.Show("Error obtaining Master Key", "GMC: Error", MessageBoxButtons.OK, MessageBoxIcon.Error, MessageBoxDefaultButton.Button1);
+                return false;
+            }
+            {
+                byte[] raw = GetKeyBank();
 
-                CypherCapsule.Generic(System.Text.Encoding.ASCII.GetBytes(MKTB.Text), raw, ref dec, true, 15);
+                if (raw.Length == 0)
+                    return false;
+                List<byte> dec = new();
 
-                dec_s = System.Text.Encoding.ASCII.GetString(dec).Split('\n');
+                CypherCapsule.Decypher(raw, dec, MKey);
+
+                dec_s = System.Text.Encoding.ASCII.GetString(dec.ToArray()).Split('\n');
             }
 
             string TargetName = OutPath.Split('\\').Last();
@@ -335,50 +421,41 @@ namespace GMC
             foreach (string s in dec_s)
             {
                 string[] sp = s.Split('\t');
-                if (sp.Length < 3)
+                if (sp.Length < 2)
                     continue;
 
                 if (sp[0].Equals(TargetName))
                 {
-                    var res = MessageBox.Show("Key found in bank. Proceed with deletion?", "Confirmation", MessageBoxButtons.YesNo, MessageBoxIcon.Exclamation);
-                    if (res == DialogResult.Yes)
-                        continue;
+                    var res = MessageBox.Show("Key found. Are you sure you want to delete it? This action cannot be undone", "Confirmation", MessageBoxButtons.YesNo, MessageBoxIcon.Exclamation);
+                    if (res == DialogResult.No)
+                        return false;
                 }
-                Out += $"{sp[0]}\t{sp[1]}\t{sp[2]}\n";
+                else
+                    Out += $"{sp[0]}\t{sp[1]}\n";
             }
 
-            byte[] enc = new byte[Out.Length];
-            CypherCapsule.Generic(System.Text.Encoding.ASCII.GetBytes(MKTB.Text), System.Text.Encoding.ASCII.GetBytes(Out), ref enc, false, 15);
+            List<byte> enc = new();
+            CypherCapsule.Cypher(System.Text.Encoding.ASCII.GetBytes(Out), enc, MKey);
 
-            File.WriteAllBytes(path, enc);
+            SaveKeyBank(enc.ToArray());
+            return true;
         }
 
-        private void button2_Click(object sender, EventArgs e)
-        {
-            Cursor.Current = Cursors.WaitCursor;
-            string key_i = FindKey();
-            Cursor.Current = Cursors.Default;
-            if (key_i.Length == 0)
-            {
-                MessageBox.Show("Key not found", "GMC: Error", MessageBoxButtons.OK, MessageBoxIcon.Error, MessageBoxDefaultButton.Button1);
-            }
-            else
-            {
-                key = key_i;
-                KeyTB.Text = key;
-            }
-        }
-
-        private void SaveKeyBTN_Click(object sender, EventArgs e)
-        {
-            Cursor.Current = Cursors.WaitCursor;
-            SaveKey();
-            Cursor.Current = Cursors.Default;
-        }
-
-        private void button3_Click(object sender, EventArgs e)
+        private void DelStorKey_Click(object sender, EventArgs e)
         {
             DeleteKey();
+        }
+
+        private void ExchangeBTN_Click(object sender, EventArgs e)
+        {
+            var tmp = InPath;
+            InPath =OutPath;
+            OutPath = tmp;
+            openFileDialog1.FileName = InPath;
+            InputTB.Text = InPath;
+            saveFileDialog1.FileName = OutPath;
+            OutputTB.Text = OutPath;
+            DecypherCHK.Checked = InPath.Contains(".gmc");
         }
     }
 }
