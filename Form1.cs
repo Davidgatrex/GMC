@@ -133,8 +133,9 @@ namespace GMC
             if (!Decypher_Internal)
             {
                 byte[] Key;
-                List<byte> Out = new();
-                CypherCapsule.Cypher(File.ReadAllBytes(InPath), Out, out Key);
+                FileStream OutStream = File.OpenWrite(OutPath);
+                FileStream InStream = File.OpenRead(InPath);
+                CypherCapsule.Cypher(InStream, OutStream, out Key);
                 if (SaveKey(Key))
                 {
                     MessageBox.Show("Key Saved");
@@ -143,7 +144,9 @@ namespace GMC
                 {
                     MessageBox.Show("Couldn't save the key");
                 }
-                File.WriteAllBytes(OutPath, Out.ToArray());
+
+                OutStream.Dispose();
+                InStream.Dispose();
             }
             else
             {
@@ -155,9 +158,13 @@ namespace GMC
                     return;
                 }
 
-                List<byte> Out = new();
-                var rr = CypherCapsule.Decypher(File.ReadAllBytes(InPath), Out, Key);
-                File.WriteAllBytes(OutPath, Out.ToArray());
+                FileStream OutStream = File.OpenWrite(OutPath);
+                FileStream InStream = File.OpenRead(InPath);
+
+                var rr = CypherCapsule.Decypher(InStream, OutStream, Key);
+
+                OutStream.Dispose();
+                InStream.Dispose();
             }
             Cursor.Current = Cursors.Default;
         }
