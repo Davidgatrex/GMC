@@ -380,7 +380,6 @@ namespace GMC
             Out += $"{TargetName}\t{Convert.ToBase64String(key)}";
 
             List<byte> enc = new();
-            MessageBox.Show($"{TargetName}. {OutPath}");
             var re = CypherCapsule.Cypher(System.Text.Encoding.ASCII.GetBytes(Out), enc, MKey);
 
             SaveKeyBank(enc.ToArray());
