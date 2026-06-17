@@ -61,6 +61,16 @@ namespace GMC
             {
                 InPath = openFileDialog1.FileName;
                 InputTB.Text = openFileDialog1.FileName;
+                if (InPath.Contains(".gmc"))
+                {
+                    DecypherCHK.Checked = true;
+                    Decypher_Internal = true;
+                }
+                else
+                {
+                    DecypherCHK.Checked = false;
+                    Decypher_Internal = false;
+                }
             }
         }
 
@@ -68,6 +78,16 @@ namespace GMC
         {
             InputTB.Text = InputTB.Text.Trim('\t');
             InPath = InputTB.Text;
+            if (InPath.Contains(".gmc"))
+            {
+                DecypherCHK.Checked = true;
+                Decypher_Internal = true;
+            }
+            else
+            {
+                DecypherCHK.Checked = false;
+                Decypher_Internal = false;
+            }
         }
 
         private void OutputBTN_Click(object sender, EventArgs e)
@@ -136,7 +156,7 @@ namespace GMC
                 }
 
                 List<byte> Out = new();
-                CypherCapsule.Decypher(File.ReadAllBytes(InPath), Out, Key);
+                var rr = CypherCapsule.Decypher(File.ReadAllBytes(InPath), Out, Key);
                 File.WriteAllBytes(OutPath, Out.ToArray());
             }
             Cursor.Current = Cursors.Default;
@@ -304,7 +324,7 @@ namespace GMC
                 MessageBox.Show("Error decyphering key bank", "GMC: Error", MessageBoxButtons.OK, MessageBoxIcon.Error, MessageBoxDefaultButton.Button1);
                 return null;
             }
-            string[] dec_s = System.Text.Encoding.ASCII.GetString(dec.ToArray()).Split('\n');
+            string[] dec_s = System.Text.Encoding.UTF8.GetString(dec.ToArray()).Split('\n');
             foreach (string s in dec_s)
             {
                 string[] sp = s.Split('\t');
@@ -354,7 +374,7 @@ namespace GMC
 
                     CypherCapsule.Decypher(raw, dec, MKey);
 
-                    dec_s = System.Text.Encoding.ASCII.GetString(dec.ToArray()).Split('\n');
+                    dec_s = System.Text.Encoding.UTF8.GetString(dec.ToArray()).Split('\n');
                 }
             }
 
@@ -374,13 +394,13 @@ namespace GMC
                         return false;
                 }
                 else
-                    Out += $"{sp[0]}\t{sp[1]}";
+                    Out += $"{sp[0]}\t{sp[1]}\n";
             }
 
             Out += $"{TargetName}\t{Convert.ToBase64String(key)}";
 
             List<byte> enc = new();
-            var re = CypherCapsule.Cypher(System.Text.Encoding.ASCII.GetBytes(Out), enc, MKey);
+            var re = CypherCapsule.Cypher(System.Text.Encoding.UTF8.GetBytes(Out), enc, MKey);
 
             SaveKeyBank(enc.ToArray());
             return true;
@@ -388,9 +408,9 @@ namespace GMC
 
         private bool DeleteKey()
         {
-            if (OutPath.Length == 0)
+            if (InPath.Length == 0)
             {
-                MessageBox.Show("No output file selected", "GMC: Error", MessageBoxButtons.OK, MessageBoxIcon.Error, MessageBoxDefaultButton.Button1);
+                MessageBox.Show("No input file selected", "GMC: Error", MessageBoxButtons.OK, MessageBoxIcon.Error, MessageBoxDefaultButton.Button1);
                 return false;
             }
 
@@ -411,11 +431,12 @@ namespace GMC
 
                 CypherCapsule.Decypher(raw, dec, MKey);
 
-                dec_s = System.Text.Encoding.ASCII.GetString(dec.ToArray()).Split('\n');
+                dec_s = System.Text.Encoding.UTF8.GetString(dec.ToArray()).Split('\n');
             }
 
-            string TargetName = OutPath.Split('\\').Last();
+            string TargetName = InPath.Split('\\').Last();
 
+            bool found = false;
             string Out = "";
             foreach (string s in dec_s)
             {
@@ -428,13 +449,20 @@ namespace GMC
                     var res = MessageBox.Show("Key found. Are you sure you want to delete it? This action cannot be undone", "Confirmation", MessageBoxButtons.YesNo, MessageBoxIcon.Exclamation);
                     if (res == DialogResult.No)
                         return false;
+                    found = true;
                 }
                 else
                     Out += $"{sp[0]}\t{sp[1]}\n";
             }
 
+            if(!found)
+            {
+                MessageBox.Show("No key found for desired file. Nothing to delete", "GMC: Info", MessageBoxButtons.OK, MessageBoxIcon.Information, MessageBoxDefaultButton.Button1);
+                return false;
+            }
+
             List<byte> enc = new();
-            CypherCapsule.Cypher(System.Text.Encoding.ASCII.GetBytes(Out), enc, MKey);
+            CypherCapsule.Cypher(System.Text.Encoding.UTF8.GetBytes(Out), enc, MKey);
 
             SaveKeyBank(enc.ToArray());
             return true;
@@ -442,7 +470,8 @@ namespace GMC
 
         private void DelStorKey_Click(object sender, EventArgs e)
         {
-            DeleteKey();
+            if(MessageBox.Show("Are you sure you want to delete Input File's key? This action cannot be undone", "Confirmation", MessageBoxButtons.YesNo, MessageBoxIcon.Exclamation) == DialogResult.Yes)
+                DeleteKey();
         }
 
         private void ExchangeBTN_Click(object sender, EventArgs e)

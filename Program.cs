@@ -30,13 +30,11 @@ public class CypherCapsule
             }
         }
 
-        // Cambia la firma para devolver el código Y el array de bytes resultante
         public static (CypherReturnCode ReturnCode, List<byte> ResultData) Cypher(byte[] Input, byte[] key)
         {
             using (AESCypher cypher = new(Input))
             {
                 var r = cypher.Cypher(key);
-                // Devolvemos una copia directa de los bytes antes de destruir el objeto
                 return (r, cypher.OutData);
             }
         }
@@ -120,24 +118,36 @@ public class CypherCapsule
 
         public CypherReturnCode Decypher(byte[] key)
         {
-            byte IVLen = InData[0];
-            InData.RemoveAt(0);
-            byte[] IV = InData.Take(IVLen).ToArray();
-            InData.RemoveRange(0, IVLen);
-
-            OutData.Clear();
-
-            if(!aes.ValidKeySize(key.Length * 8))
+            if (!aes.ValidKeySize(key.Length * 8))
                 return CypherReturnCode.InvalidKey;
 
-            
             aes.Key = key;
+            OutData.Clear();
+
             try
             {
-                OutData.AddRange(aes.DecryptCbc(InData.ToArray(), IV));
+                // 1. Convertimos la lista a un array para trabajar sobre seguro
+                byte[] inputBytes = InData.ToArray();
+
+                // 2. Leer la longitud del IV (primer byte)
+                byte IVLen = inputBytes[0];
+
+                // 3. Extraer el IV usando LINQ (Sáltate 1 byte, toma IVLen)
+                byte[] IV = inputBytes.Skip(1).Take(IVLen).ToArray();
+
+                // 4. Extraer SOLO los datos cifrados (Sáltate el byte de longitud + el IV)
+                byte[] cipheredData = inputBytes.Skip(1 + IVLen).ToArray();
+
+                // 5. Descifrar el bloque limpio
+                OutData.AddRange(aes.DecryptCbc(cipheredData, IV));
             }
             catch (CryptographicException)
             {
+                return CypherReturnCode.InvalidInput;
+            }
+            catch (ArgumentOutOfRangeException)
+            {
+                // Por si los datos de entrada están corruptos y el índice no existe
                 return CypherReturnCode.InvalidInput;
             }
 

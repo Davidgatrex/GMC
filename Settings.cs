@@ -106,8 +106,8 @@ namespace GMC
 
             Dictionary<string, string> keyValuePairs = new();
 
-            string loc_s = Encoding.ASCII.GetString(local.ToArray());
-            string fore_s = Encoding.ASCII.GetString(foreign.ToArray());
+            string loc_s = Encoding.UTF8.GetString(local.ToArray());
+            string fore_s = Encoding.UTF8.GetString(foreign.ToArray());
 
             if(loc_s.Length > 0)
                 foreach(string s in loc_s.Split('\n'))
@@ -147,7 +147,7 @@ namespace GMC
 
             List<byte> outBytes = new();
 
-            var c_res = CypherCapsule.Cypher(Encoding.ASCII.GetBytes(outString), outBytes, MasterKey);
+            var c_res = CypherCapsule.Cypher(Encoding.UTF8.GetBytes(outString), outBytes, MasterKey);
 
             if(c_res != CypherReturnCode.OK)
             {
